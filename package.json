@@ -5,7 +5,7 @@
   "description": "Zero-Admin Windows Tauri v2 + Pure-Rust SSH2/SFTP Engineering Workbench",
   "repository": {
     "type": "git",
-    "url": "https://github.com/diorgulescu/labbridge.git"
+    "url": "https://github.com/diorgulescu/LabBridge.git"
   },
   "contributors": [
     {

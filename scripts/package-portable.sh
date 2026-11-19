@@ -1,16 +1,6 @@
 #!/usr/bin/env bash
 # Builds LabBridge for Windows (x86_64-pc-windows-msvc) using cargo-xwin
-# and packages dist-portable/LabBridge-Portable.zip containing:
-#   - LabBridge.exe
-#   - portable.mode
-#   - README-TEAM.md
-#
-# Prerequisites on macOS / Linux:
-#   rustup target add x86_64-pc-windows-msvc
-#   cargo install cargo-xwin
-#
-# Usage:
-#   ./scripts/package-portable.sh
+# and packages dist-portable/LabBridge-Portable.zip + SHA256SUMS.txt.
 
 set -euo pipefail
 
@@ -33,6 +23,7 @@ echo "==> [3/4] Staging zero-admin portable directory..."
 OUT_ROOT="$REPO_ROOT/dist-portable"
 STAGE_DIR="$OUT_ROOT/LabBridge"
 ZIP_PATH="$OUT_ROOT/LabBridge-Portable.zip"
+SUMS_PATH="$OUT_ROOT/SHA256SUMS.txt"
 
 rm -rf "$OUT_ROOT"
 mkdir -p "$STAGE_DIR"
@@ -41,10 +32,26 @@ cp "$EXE_PATH" "$STAGE_DIR/LabBridge.exe"
 : > "$STAGE_DIR/portable.mode"
 cp "$REPO_ROOT/README-TEAM.md" "$STAGE_DIR/README-TEAM.md"
 
-echo "==> [4/4] Creating LabBridge-Portable.zip..."
+echo "==> [4/4] Creating LabBridge-Portable.zip & SHA256SUMS.txt..."
 (
   cd "$STAGE_DIR"
   zip -9 -r "$ZIP_PATH" LabBridge.exe portable.mode README-TEAM.md
 )
+
+if command -v sha256sum >/dev/null 2>&1; then
+  (
+    cd "$OUT_ROOT"
+    sha256sum LabBridge-Portable.zip > "$SUMS_PATH"
+    cd "$STAGE_DIR"
+    sha256sum LabBridge.exe >> "$SUMS_PATH"
+  )
+else
+  (
+    cd "$OUT_ROOT"
+    shasum -a 256 LabBridge-Portable.zip > "$SUMS_PATH"
+    cd "$STAGE_DIR"
+    shasum -a 256 LabBridge.exe >> "$SUMS_PATH"
+  )
+fi
 
 echo "Done! Portable archive created at: $ZIP_PATH"

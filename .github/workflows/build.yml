@@ -1,4 +1,4 @@
-name: Build Windows Executable
+name: Build & Release Windows Executable
 
 on:
   push:
@@ -7,22 +7,86 @@ on:
       - master
     tags:
       - "v*"
+      - "[0-9]+.[0-9]+*"
+  release:
+    types:
+      - published
+      - created
   pull_request:
     branches:
       - main
       - master
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: "Publish build artifacts to a GitHub Release"
+        required: false
+        default: true
+        type: boolean
+      release_tag:
+        description: "Optional release tag override (e.g. v0.1.0; defaults to package.json version)"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: write
 
+concurrency:
+  group: build-windows-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build-windows:
-    name: Build LabBridge.exe (x86_64-pc-windows-msvc)
+    name: Build & Publish LabBridge.exe (x86_64-pc-windows-msvc)
     runs-on: windows-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Resolve release metadata
+        id: release_meta
+        shell: pwsh
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF_FULL: ${{ github.ref }}
+          GITHUB_REF_SHORT: ${{ github.ref_name }}
+          RELEASE_EVENT_TAG: ${{ github.event.release.tag_name }}
+          INPUT_PUBLISH: ${{ inputs.publish_release }}
+          INPUT_TAG: ${{ inputs.release_tag }}
+        run: |
+          $pkg = Get-Content -Raw -Path "package.json" | ConvertFrom-Json
+          $defaultTag = "v$($pkg.version)"
+          $shouldRelease = "false"
+          $tagName = $defaultTag
+
+          if ($env:EVENT_NAME -eq "pull_request") {
+              $shouldRelease = "false"
+          }
+          elseif ($env:EVENT_NAME -eq "release" -and $env:RELEASE_EVENT_TAG) {
+              $shouldRelease = "true"
+              $tagName = $env:RELEASE_EVENT_TAG
+          }
+          elseif ($env:GITHUB_REF_FULL -like "refs/tags/*") {
+              $shouldRelease = "true"
+              $tagName = $env:GITHUB_REF_SHORT
+          }
+          elseif ($env:EVENT_NAME -eq "workflow_dispatch") {
+              if ($env:INPUT_PUBLISH -ne "false") {
+                  $shouldRelease = "true"
+              }
+              if (-not [string]::IsNullOrWhiteSpace($env:INPUT_TAG)) {
+                  $tagName = $env:INPUT_TAG.Trim()
+              }
+          }
+          elseif ($env:EVENT_NAME -eq "push" -and ($env:GITHUB_REF_SHORT -eq "main" -or $env:GITHUB_REF_SHORT -eq "master")) {
+              $shouldRelease = "true"
+              $tagName = $defaultTag
+          }
+
+          "should_release=$shouldRelease" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "tag_name=$tagName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "Resolved release: should_release=$shouldRelease, tag_name=$tagName"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -49,25 +113,37 @@ jobs:
       - name: Run Rust unit & integration tests
         run: cargo test --lib --manifest-path src-tauri/Cargo.toml
 
-      - name: Package zero-admin LabBridge-Portable.zip & LabBridge.exe
+      - name: Package zero-admin LabBridge-Portable.zip, LabBridge.exe & SHA256SUMS.txt
         shell: pwsh
         run: ./scripts/package-portable.ps1
 
-      - name: Upload LabBridge Windows executable & portable zip artifact
+      - name: Upload workflow build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: LabBridge-Windows-x64
           path: |
             dist-portable/LabBridge-Portable.zip
             dist-portable/LabBridge/LabBridge.exe
+            dist-portable/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 30
 
-      - name: Publish GitHub Release on version tag
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Publish artifacts to GitHub Release
+        if: steps.release_meta.outputs.should_release == 'true'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.release_meta.outputs.tag_name }}
+          name: LabBridge ${{ steps.release_meta.outputs.tag_name }}
+          target_commitish: ${{ github.sha }}
+          draft: false
+          prerelease: false
           generate_release_notes: true
+          body: |
+            ### Zero-Admin Windows Release Artifacts (`x86_64-pc-windows-msvc`)
+            - **`LabBridge-Portable.zip`**: Ready-to-share archive containing `LabBridge.exe`, `portable.mode` (stores configs & logs in `./data/`), and `README-TEAM.md`.
+            - **`LabBridge.exe`**: Standalone Tauri v2 + Pure-Rust SSH2/SFTP executable (stores configs in `%APPDATA%\LabBridge` when run without `portable.mode`).
+            - **`SHA256SUMS.txt`**: SHA-256 checksums for artifact verification.
           files: |
             dist-portable/LabBridge-Portable.zip
             dist-portable/LabBridge/LabBridge.exe
+            dist-portable/SHA256SUMS.txt

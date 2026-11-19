@@ -1,6 +1,7 @@
 # LabBridge
 
-[![Build Windows Executable](https://github.com/diorgulescu/labbridge/actions/workflows/build.yml/badge.svg)](https://github.com/diorgulescu/labbridge/actions/workflows/build.yml)
+[![Build & Release Windows Executable](https://github.com/diorgulescu/LabBridge/actions/workflows/build.yml/badge.svg)](https://github.com/diorgulescu/LabBridge/actions/workflows/build.yml)
+[![Latest GitHub Release](https://img.shields.io/github/v/release/diorgulescu/LabBridge?label=Download%20Release)](https://github.com/diorgulescu/LabBridge/releases/latest)
 
 **LabBridge** is a zero-admin Windows-first SSH2 + SFTP engineering workbench built with **Tauri v2**, **Pure-Rust (`russh` + `russh-sftp`)**, **React**, **TypeScript**, and **Tailwind CSS**.
 
@@ -89,8 +90,8 @@ npm run tauri dev
   ```
 Both commands output `dist-portable/LabBridge-Portable.zip` containing `LabBridge.exe`, `portable.mode`, and `README-TEAM.md`.
 
-### Automated GitHub Actions Builds
-Every push, pull request, and manual workflow dispatch runs [`.github/workflows/build.yml`](.github/workflows/build.yml) on `windows-latest`, executing the Rust unit/integration test suite, compiling `LabBridge.exe` (`LTO = thin`, `strip = true`), and publishing `LabBridge-Portable.zip` and `LabBridge.exe` as workflow artifacts (and automatically attaching them to GitHub Releases on `v*` tags).
+### Automated GitHub Actions Builds & Releases
+Every push to `main`, version tag (`v*`), published GitHub Release, or manual workflow dispatch runs [`.github/workflows/build.yml`](.github/workflows/build.yml) on `windows-latest`, executing the Rust unit/integration test suite, compiling `LabBridge.exe` (`LTO = thin`, `strip = true`), and automatically publishing `LabBridge-Portable.zip`, `LabBridge.exe`, and `SHA256SUMS.txt` directly to [GitHub Releases](https://github.com/diorgulescu/LabBridge/releases).
 
 ---
 
