@@ -222,9 +222,11 @@ export async function ptyWrite(
   tabId: string,
   bytes: Uint8Array,
 ): Promise<void> {
+  // Tauri v2 natively supports Uint8Array over invoke — uses binary IPC
+  // instead of JSON-serializing each byte as a number (Array.from).
   return invoke<void>("pty_write", {
     tabId,
-    data: Array.from(bytes),
+    data: bytes,
   });
 }
 

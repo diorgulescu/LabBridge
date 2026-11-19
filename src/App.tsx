@@ -8,6 +8,7 @@ import { DEFAULT_CLIENT_MACROS } from "./components/macros/MacroEditorModal";
 import { ProfileManagerModal } from "./components/ProfileManagerModal";
 import { HostKeyModal } from "./components/HostKeyModal";
 import { TerminalDock } from "./components/terminal/TerminalDock";
+import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import {
   formatError,
   getStorageInfo,
@@ -576,46 +577,20 @@ export const App: React.FC = () => {
     handleSendCommandToTerminal(OSC7_PROMPT_HOOK_SNIPPET);
   }, [handleSendCommandToTerminal]);
 
-  // Global workbench shortcuts (including Alt+1..Alt+5 when focus is outside xterm)
-  useEffect(() => {
-    const onKeyDown = (ev: KeyboardEvent) => {
-      if (
-        ev.altKey &&
-        !ev.ctrlKey &&
-        !ev.metaKey &&
-        /^Digit[1-5]$/.test(ev.code)
-      ) {
-        ev.preventDefault();
-        const idx = Number(ev.code.slice("Digit".length)) - 1;
-        handleTriggerMacroIndex(idx);
-        return;
-      }
-
-      if (ev.ctrlKey && !ev.shiftKey && ev.key === ",") {
-        ev.preventDefault();
-        setProfileModalCreateMode(false);
-        setProfileModalOpen(true);
-      } else if (ev.ctrlKey && !ev.shiftKey && ev.code === "KeyJ") {
-        ev.preventDefault();
-        setIsDockMaximized((v) => !v);
-      } else if (ev.ctrlKey && ev.shiftKey && ev.code === "KeyT") {
-        ev.preventDefault();
-        handleOpenNewTerminal();
-      } else if (ev.ctrlKey && ev.shiftKey && ev.code === "KeyW") {
-        if (activeTabUiId) {
-          ev.preventDefault();
-          handleCloseTab(activeTabUiId);
-        }
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [
-    activeTabUiId,
-    handleCloseTab,
-    handleOpenNewTerminal,
-    handleTriggerMacroIndex,
-  ]);
+  // Global workbench shortcuts via extracted hook (Alt+1..5, Ctrl+,, Ctrl+J, Ctrl+Shift+T/W)
+  useKeyboardShortcuts({
+    onTriggerMacroIndex: handleTriggerMacroIndex,
+    onOpenSettings: () => {
+      setProfileModalCreateMode(false);
+      setProfileModalOpen(true);
+    },
+    onToggleDockMaximize: () => setIsDockMaximized((v) => !v),
+    onOpenNewTerminal: handleOpenNewTerminal,
+    onCloseActiveTab: () => {
+      if (activeTabUiId) handleCloseTab(activeTabUiId);
+    },
+    hasActiveTab: Boolean(activeTabUiId),
+  });
 
   // Vertical dock splitter drag handler
   const startSplitterDrag = (e: React.PointerEvent<HTMLDivElement>) => {

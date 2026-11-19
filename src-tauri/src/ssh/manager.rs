@@ -131,6 +131,13 @@ impl SshManager {
         app_handle: AppHandle,
         profile_id: &str,
     ) -> AppResult<ConnectionStatusPayload> {
+        let _span = tracing::info_span!("ssh_connect", profile_id, host = %self
+            .config_store
+            .get_profile(profile_id)
+            .map(|p| p.host.clone())
+            .unwrap_or_default());
+        let _guard = _span.enter();
+
         let profile = self.config_store.get_profile(profile_id)?;
 
         // Tear down any existing session/in-flight attempt for this profile cleanly

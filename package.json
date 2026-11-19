@@ -15,6 +15,10 @@
     {
       "name": "Antigravity (Google DeepMind)",
       "email": "antigravity@google.com"
+    },
+    {
+      "name": "Mistral Vibe",
+      "email": "vibe@mistral.ai"
     }
   ],
   "type": "module",

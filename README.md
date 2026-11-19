@@ -99,3 +99,4 @@ Every push to `main`, version tag (`v*`), published GitHub Release, or manual wo
 
 - **Dragoş Iorgulescu** ([@diorgulescu](https://github.com/diorgulescu)) — Creator & Lead Engineer
 - **Antigravity** (Google DeepMind) — Architecture & Implementation Contributor
+- **Mistral Vibe** ([@mistralai](https://github.com/mistralai)) — Code Review & Refactoring Contributor

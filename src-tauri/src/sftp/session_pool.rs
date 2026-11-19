@@ -119,17 +119,36 @@ impl SftpManager {
                 let fresh_sftp = self.get_or_create(profile_id).await?;
                 op(fresh_sftp).await.map_err(AppError::from)
             }
-            Err(err) => Err(AppError::from(err)),
+            Err(err) => {
+                // Log protocol-level errors at warn so they're visible in logs
+                // without triggering an unnecessary channel recreation.
+                if is_protocol_level_error(&err) {
+                    tracing::warn!(
+                        "SFTP protocol error for profile '{}' (not a channel drop): {}",
+                        profile_id,
+                        err
+                    );
+                }
+                Err(AppError::from(err))
+            }
         }
     }
 }
 
+/// Returns true only for errors that genuinely indicate the SFTP channel/stream
+/// was dropped (I/O failure or timeout). Protocol-level errors like
+/// `UnexpectedPacket` or `UnexpectedBehavior` are NOT treated as channel drops
+/// because they may indicate a real protocol bug that should surface, not be
+/// silently retried.
 pub fn is_channel_dropped_error(err: &SftpError) -> bool {
+    matches!(err, SftpError::IO(_) | SftpError::Timeout)
+}
+
+/// Returns true for protocol-level SFTP errors that should be logged at warn
+/// but should NOT trigger automatic channel recreation.
+pub fn is_protocol_level_error(err: &SftpError) -> bool {
     matches!(
         err,
-        SftpError::IO(_)
-            | SftpError::Timeout
-            | SftpError::UnexpectedPacket
-            | SftpError::UnexpectedBehavior(_)
+        SftpError::UnexpectedPacket | SftpError::UnexpectedBehavior(_)
     )
 }

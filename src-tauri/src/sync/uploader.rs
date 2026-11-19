@@ -111,6 +111,14 @@ async fn upload_fast_sftp_atomic(
     remote_root: &str,
     files: &[PreparedSyncFile],
 ) -> AppResult<u64> {
+    let _span = tracing::info_span!(
+        "sync_sftp_atomic",
+        profile_id,
+        file_count = files.len(),
+        remote_root,
+    );
+    let _guard = _span.enter();
+
     let sftp = sftp_manager.get_or_create(profile_id).await?;
 
     // Ensure unique parent directories exist first
@@ -230,6 +238,14 @@ async fn upload_tar_gz_stream(
     remote_root: &str,
     files: Vec<PreparedSyncFile>,
 ) -> AppResult<u64> {
+    let _span = tracing::info_span!(
+        "sync_tar_stream",
+        profile_id,
+        file_count = files.len(),
+        remote_root,
+    );
+    let _guard = _span.enter();
+
     let modes_to_record: Vec<(String, u32)> = files
         .iter()
         .map(|f| (f.rel_posix.clone(), f.mode))
@@ -327,12 +343,32 @@ async fn delete_remote_files_batched(
 }
 
 /// Runs a shell command over a multiplexed SSH `exec` channel, optionally streaming `stdin_payload`,
-/// and verifies exit code `0`.
+/// and verifies exit code `0`. Supports cooperative cancellation via `CancellationToken` so
+/// long-running remote commands (e.g. large tar extractions) can be aborted from the frontend.
 pub async fn run_ssh_exec_checked(
     ssh_manager: &SshManager,
     profile_id: &str,
     command: &str,
     stdin_payload: Option<&[u8]>,
+) -> AppResult<String> {
+    run_ssh_exec_checked_with_cancel(
+        ssh_manager,
+        profile_id,
+        command,
+        stdin_payload,
+        None,
+    )
+    .await
+}
+
+/// Variant of [`run_ssh_exec_checked`] that accepts an optional [`CancellationToken`].
+/// When the token is cancelled, the SSH channel is closed immediately and an error is returned.
+pub async fn run_ssh_exec_checked_with_cancel(
+    ssh_manager: &SshManager,
+    profile_id: &str,
+    command: &str,
+    stdin_payload: Option<&[u8]>,
+    cancel_token: Option<tokio_util::sync::CancellationToken>,
 ) -> AppResult<String> {
     let handle = ssh_manager.get_handle(profile_id).await?;
     let mut channel = handle.channel_open_session().await?;
@@ -341,6 +377,12 @@ pub async fn run_ssh_exec_checked(
     if let Some(payload) = stdin_payload {
         let mut writer = channel.make_writer();
         for chunk in payload.chunks(65_536) {
+            if let Some(ref tok) = cancel_token {
+                if tok.is_cancelled() {
+                    let _ = channel.close().await;
+                    return Err(AppError::Sync("SSH exec cancelled".into()));
+                }
+            }
             writer.write_all(chunk).await?;
         }
         writer.flush().await?;
@@ -352,22 +394,41 @@ pub async fn run_ssh_exec_checked(
     let mut exit_code: Option<u32> = None;
 
     let collect = async {
-        while let Some(msg) = channel.wait().await {
-            match msg {
-                ChannelMsg::Data { ref data } => stdout_buf.extend_from_slice(data),
-                ChannelMsg::ExtendedData { ref data, .. } => stderr_buf.extend_from_slice(data),
-                ChannelMsg::ExitStatus { exit_status } => exit_code = Some(exit_status),
-                ChannelMsg::Eof | ChannelMsg::Close => break,
-                _ => {}
+        loop {
+            tokio::select! {
+                biased;
+                _ = async {
+                    if let Some(ref tok) = cancel_token {
+                        tok.cancelled().await;
+                    } else {
+                        std::future::pending::<()>().await;
+                    }
+                } => {
+                    return Err(());
+                }
+                msg = channel.wait() => {
+                    match msg {
+                        Some(ChannelMsg::Data { ref data }) => stdout_buf.extend_from_slice(data),
+                        Some(ChannelMsg::ExtendedData { ref data, .. }) => stderr_buf.extend_from_slice(data),
+                        Some(ChannelMsg::ExitStatus { exit_status }) => exit_code = Some(exit_status),
+                        Some(ChannelMsg::Eof) | Some(ChannelMsg::Close) | None => break,
+                        _ => {}
+                    }
+                }
             }
         }
+        Ok(())
     };
 
-    tokio::time::timeout(Duration::from_secs(120), collect)
+    let collect_result = tokio::time::timeout(Duration::from_secs(120), collect)
         .await
         .map_err(|_| AppError::Sync("SSH exec command timed out".into()))?;
 
     let _ = channel.close().await;
+
+    if collect_result.is_err() {
+        return Err(AppError::Sync("SSH exec cancelled".into()));
+    }
 
     let stdout_str = String::from_utf8_lossy(&stdout_buf).into_owned();
     let stderr_str = String::from_utf8_lossy(&stderr_buf).trim().to_string();

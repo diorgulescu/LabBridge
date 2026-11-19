@@ -40,6 +40,15 @@ pub async fn reconcile_workspace_impl(
     profile: &WorkspaceProfile,
     dry_run: bool,
 ) -> AppResult<ReconcileExecutionResult> {
+    let _span = tracing::info_span!(
+        "sync_reconcile",
+        profile_id = %profile.id,
+        dry_run,
+        local_root = %profile.local_root_path,
+        remote_root = %profile.remote_root_path,
+    );
+    let _guard = _span.enter();
+
     let started = Instant::now();
 
     if profile.local_root_path.trim().is_empty() || profile.remote_root_path.trim().is_empty() {

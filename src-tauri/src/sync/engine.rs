@@ -680,6 +680,14 @@ impl SyncManager {
         upsert_rels: &[String],
         delete_rels: &[String],
     ) -> AppResult<bool> {
+        let _span = tracing::info_span!(
+            "sync_flush_batch",
+            profile_id = %profile.id,
+            upserts = upsert_rels.len(),
+            deletes = delete_rels.len(),
+        );
+        let _guard = _span.enter();
+
         let started = Instant::now();
         let filter = ProjectFilter::build(local_root, &profile.excluded_dirs)?;
 

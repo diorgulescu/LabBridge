@@ -5,6 +5,7 @@ description = "LabBridge — Engineering SSH Workbench"
 authors = [
     "Dragoş Iorgulescu <32508790+diorgulescu@users.noreply.github.com>",
     "Antigravity <antigravity@google.com>",
+    "Mistral Vibe <vibe@mistral.ai>",
 ]
 edition = "2021"
 default-run = "LabBridge"
